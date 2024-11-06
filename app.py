@@ -3,8 +3,7 @@ from fastapi import FastAPI, Request, Depends
 from dependencies import check_authentication
 import pymongo
 import os
-from dotenv import load_dotenv
-load_dotenv()
+
 
 class ProxyApp:
     def __init__(self):
