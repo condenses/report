@@ -1,75 +1,87 @@
-
-from fastapi import FastAPI, Request, Depends
-from dependencies import check_authentication
-import pymongo
+from fastapi import FastAPI, Request, Depends, HTTPException
+import motor.motor_asyncio
 import os
+import bittensor as bt
+import asyncio
+from dependencies import check_authentication
 
 
-class ProxyApp:
+class ValidatorReportGather:
     def __init__(self):
         """
-        Initialize the ValidatorApp with necessary configurations, database connections, and background tasks.
+        Initialize the ProxyApp with necessary configurations, database connections, and background tasks.
         """
-        print("Initializing ValidatorApp")
+        print("Initializing ProxyApp")
 
+        # Environment variables
         self.MONGOHOST = os.getenv("MONGOHOST", "localhost")
         self.MONGOPORT = int(os.getenv("MONGOPORT", 27017))
         self.MONGOUSER = os.getenv("MONGOUSER", "root")
         self.MONGOPASSWORD = os.getenv("MONGOPASSWORD", "example")
+        self.SUBTENSOR_NETWORK = os.getenv("SUBTENSOR_NETWORK", "finney")
+        self.NETUID = os.getenv("NETUID", 52)
+        self.MIN_STAKE = int(os.getenv("MIN_STAKE", 10000))
 
-
+        # Initialize async MongoDB connection
         try:
-            self.client = pymongo.MongoClient(
+            self.client = motor.motor_asyncio.AsyncIOMotorClient(
                 f"mongodb://{self.MONGOUSER}:{self.MONGOPASSWORD}@{self.MONGOHOST}:{self.MONGOPORT}"
             )
-            self.DB = self.client["ncs-client"]
+            self.DB = self.client["subnet-metrics"]
             print(f"Connected to MongoDB at {self.MONGOHOST}:{self.MONGOPORT}")
         except Exception as e:
             print(f"Failed to connect to MongoDB: {e}")
             raise
 
+        # Initialize Subtensor
+        try:
+            self.subtensor = bt.subtensor(network=self.SUBTENSOR_NETWORK)
+            self.metagraph = self.subtensor.metagraph(self.NETUID)
+            print(f"Connected to Subtensor network {self.SUBTENSOR_NETWORK}")
+        except Exception as e:
+            print(f"Failed to initialize Subtensor: {e}")
+            raise
 
+        # Periodic metagraph resync
+        asyncio.create_task(self.resync_metagraph_periodically())
 
-        self.in_memory_validators = {}
-        self.validators = []
+        # FastAPI app initialization
         self.app = FastAPI()
 
-        @self.app.post("/store_miner_info")
-        async def store_miner_info(item: dict,request: Request):
-            check_authentication(request)
-            validator_collection = self.DB["validator_info"]
-            uid = item["uid"]
-            print(uid, item.get("version", "no-version"))
-            validator_collection.update_one(
-                {"_id": uid},
-                {"$set": item},
-                upsert=True
+        @self.app.post("/api/report")
+        async def report(item: dict, request: Request):
+            # Pass metagraph and min_stake to check_authentication
+            ss58_address, uid = await check_authentication(
+                request, self.metagraph, self.MIN_STAKE
+            )
+            validator_collection = self.DB["validator-reports"]
+            await validator_collection.update_one(
+                {"_id": ss58_address},
+                {"$set": {"report": item, "uid": uid, "hotkey": ss58_address}},
+                upsert=True,
             )
 
             return {"message": "Item uploaded successfully"}
 
-        @self.app.get("/get_miner_info")
-        async def get_miner_info():
-            validator_info = {}
-            validator_collection = self.DB["validator_info"]
-            for validator in validator_collection.find():
-                try:
-                    uid = validator['uid']
+        @self.app.get("/api/get-reports")
+        async def get_report():
+            validator_collection = self.DB["validator-reports"]
+            reports = await validator_collection.find().to_list(length=None)
+            return {"reports": reports}
 
-                    validator_info[uid] = {
-                        "info": validator["info"],
-                    }
-                except Exception as e:
-                    print(e)
-                    print(str(validator)[:100])
-                    continue
-            return validator_info     
+    async def resync_metagraph_periodically(self):
+        """
+        Periodically resync the Subtensor metagraph to keep it updated.
+        """
+        while True:
+            try:
+                print("Resyncing metagraph")
+                await asyncio.to_thread(self.metagraph.sync)
+                print("Metagraph resynced")
+            except Exception as e:
+                print(f"Error during metagraph resync: {e}")
+            await asyncio.sleep(600)  # Resync every 15 minutes
 
-validator_app = ProxyApp()
-app = validator_app.app
 
-if __name__ == "__main__":
-    # Start the FastAPI app
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=10000)
+vrg = ValidatorReportGather()
+app = vrg.app
