@@ -3,7 +3,7 @@ from fastapi.exceptions import HTTPException
 import bittensor as bt
 
 
-async def check_authentication(request: Request, metagraph, min_stake: int = 10000):
+def check_authentication(request: Request, metagraph, min_stake: int = 10000):
     message = request.headers.get("message")
     ss58_address = request.headers.get("ss58_address")
     signature = request.headers.get("signature")
