@@ -1,9 +1,10 @@
 from fastapi import FastAPI, Request, Depends, HTTPException
-import motor.motor_asyncio
+import pymongo
 import os
 import bittensor as bt
-import asyncio
 from dependencies import check_authentication
+import threading
+import time
 
 
 class ValidatorReportGather:
@@ -22,9 +23,9 @@ class ValidatorReportGather:
         self.NETUID = os.getenv("NETUID", 52)
         self.MIN_STAKE = int(os.getenv("MIN_STAKE", 10000))
 
-        # Initialize async MongoDB connection
+        # Initialize synchronous MongoDB connection
         try:
-            self.client = motor.motor_asyncio.AsyncIOMotorClient(
+            self.client = pymongo.MongoClient(
                 f"mongodb://{self.MONGOUSER}:{self.MONGOPASSWORD}@{self.MONGOHOST}:{self.MONGOPORT}"
             )
             self.DB = self.client["subnet-metrics"]
@@ -42,20 +43,20 @@ class ValidatorReportGather:
             print(f"Failed to initialize Subtensor: {e}")
             raise
 
-        # Periodic metagraph resync
-        asyncio.create_task(self.resync_metagraph_periodically())
+        # Start resync_metagraph_periodically in a separate thread
+        threading.Thread(target=self.resync_metagraph_periodically, daemon=True).start()
 
         # FastAPI app initialization
         self.app = FastAPI()
 
         @self.app.post("/api/report")
-        async def report(item: dict, request: Request):
+        def report(item: dict, request: Request):
             # Pass metagraph and min_stake to check_authentication
-            ss58_address, uid = await check_authentication(
+            ss58_address, uid = check_authentication(
                 request, self.metagraph, self.MIN_STAKE
             )
             validator_collection = self.DB["validator-reports"]
-            await validator_collection.update_one(
+            validator_collection.update_one(
                 {"_id": ss58_address},
                 {"$set": {"report": item, "uid": uid, "hotkey": ss58_address}},
                 upsert=True,
@@ -64,23 +65,23 @@ class ValidatorReportGather:
             return {"message": "Item uploaded successfully"}
 
         @self.app.get("/api/get-reports")
-        async def get_report():
+        def get_report():
             validator_collection = self.DB["validator-reports"]
-            reports = await validator_collection.find().to_list(length=None)
+            reports = list(validator_collection.find())
             return {"reports": reports}
 
-    async def resync_metagraph_periodically(self):
+    def resync_metagraph_periodically(self):
         """
         Periodically resync the Subtensor metagraph to keep it updated.
         """
         while True:
             try:
                 print("Resyncing metagraph")
-                await asyncio.to_thread(self.metagraph.sync)
+                self.metagraph.sync()
                 print("Metagraph resynced")
             except Exception as e:
                 print(f"Error during metagraph resync: {e}")
-            await asyncio.sleep(600)  # Resync every 15 minutes
+            time.sleep(600)  # Resync every 15 minutes
 
 
 vrg = ValidatorReportGather()
