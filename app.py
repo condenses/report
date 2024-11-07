@@ -85,3 +85,9 @@ class ValidatorReportGather:
 
 vrg = ValidatorReportGather()
 app = vrg.app
+
+if __name__ == "__main__":
+    # Start the FastAPI app
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8080)
