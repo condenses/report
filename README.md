@@ -1,1 +1,1 @@
-# ncs-proxy
+# Validator reports miner logs
