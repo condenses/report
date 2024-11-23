@@ -20,7 +20,7 @@ class ValidatorReportGather:
         self.MONGOUSER = os.getenv("MONGOUSER", "root")
         self.MONGOPASSWORD = os.getenv("MONGOPASSWORD", "example")
         self.SUBTENSOR_NETWORK = os.getenv("SUBTENSOR_NETWORK", "finney")
-        self.NETUID = os.getenv("NETUID", 52)
+        self.NETUID = os.getenv("NETUID", 47)
         self.MIN_STAKE = int(os.getenv("MIN_STAKE", 10000))
 
         # Initialize synchronous MongoDB connection
@@ -49,26 +49,62 @@ class ValidatorReportGather:
         # FastAPI app initialization
         self.app = FastAPI()
 
-        @self.app.post("/api/report")
-        def report(item: dict, request: Request):
+        @self.app.post("/api/report-metadata")
+        def report_metadata(item: dict, request: Request):
             # Pass metagraph and min_stake to check_authentication
             ss58_address, uid = check_authentication(
                 request, self.metagraph, self.MIN_STAKE
             )
-            validator_collection = self.DB["validator-reports"]
+            validator_collection = self.DB["metadata"]
             validator_collection.update_one(
                 {"_id": ss58_address},
-                {"$set": {"report": item, "uid": uid, "hotkey": ss58_address}},
+                {
+                    "$set": {
+                        "metadata": item,
+                        "uid": uid,
+                        "hotkey": ss58_address,
+                        "timestamp": time.time(),
+                    }
+                },
                 upsert=True,
             )
 
             return {"message": "Item uploaded successfully"}
 
-        @self.app.get("/api/get-reports")
-        def get_report():
-            validator_collection = self.DB["validator-reports"]
-            reports = list(validator_collection.find())
-            return {"reports": reports}
+        @self.app.post("/api/report-batch")
+        def report_batch(item: dict, request: Request):
+            ss58_address, uid = check_authentication(
+                request, self.metagraph, self.MIN_STAKE
+            )
+            validator_collection = self.DB["batch-reports"]
+            # Keep only reports from last 6 hours
+            validator_collection.delete_many(
+                {"timestamp": {"$lt": time.time() - 21600}}
+            )
+            result = validator_collection.insert_one(
+                {
+                    "_id": ss58_address,
+                    "batch_report": item,
+                    "timestamp": time.time(),
+                }
+            )
+            return {"message": "Item uploaded successfully", "result": result}
+
+        @self.app.get("/api/get-metadata")
+        def get_metadata():
+            validator_collection = self.DB["metadata"]
+            metadata = list(validator_collection.find())
+            return {"metadata": metadata}
+
+        @self.app.get("/api/get-batch-reports/{last_n_minutes}")
+        def get_batch_reports(last_n_minutes: int):
+            validator_collection = self.DB["batch-reports"]
+            batch_reports = list(
+                validator_collection.find(
+                    {"timestamp": {"$gt": time.time() - last_n_minutes * 60}}
+                )
+            )
+            return {"batch_reports": batch_reports}
 
     def resync_metagraph_periodically(self):
         """
