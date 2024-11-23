@@ -81,14 +81,17 @@ class ValidatorReportGather:
             validator_collection.delete_many(
                 {"timestamp": {"$lt": time.time() - 21600}}
             )
+            timestamp = time.time()
             result = validator_collection.insert_one(
                 {
-                    "_id": ss58_address,
+                    "_id": f"{ss58_address}-{timestamp}",
                     "batch_report": item,
-                    "timestamp": time.time(),
+                    "timestamp": timestamp,
+                    "uid": uid,
                 }
             )
-            return {"message": "Item uploaded successfully", "result": result}
+            print(result)
+            return {"message": "Item uploaded successfully"}
 
         @self.app.get("/api/get-metadata")
         def get_metadata():
