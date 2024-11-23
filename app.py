@@ -46,6 +46,9 @@ class ValidatorReportGather:
         # Start resync_metagraph_periodically in a separate thread
         threading.Thread(target=self.resync_metagraph_periodically, daemon=True).start()
 
+        # Start background tasks in separate threads
+        threading.Thread(target=self.clean_old_batch_reports_periodically, daemon=True).start()
+
         # FastAPI app initialization
         self.app = FastAPI()
 
@@ -77,10 +80,6 @@ class ValidatorReportGather:
                 request, self.metagraph, self.MIN_STAKE
             )
             validator_collection = self.DB["batch-reports"]
-            # Keep only reports from last 6 hours
-            validator_collection.delete_many(
-                {"timestamp": {"$lt": time.time() - 21600}}
-            )
             timestamp = time.time()
             result = validator_collection.insert_one(
                 {
@@ -121,6 +120,22 @@ class ValidatorReportGather:
             except Exception as e:
                 print(f"Error during metagraph resync: {e}")
             time.sleep(600)  # Resync every 15 minutes
+
+    def clean_old_batch_reports_periodically(self):
+        """
+        Periodically clean batch reports older than 6 hours.
+        """
+        while True:
+            try:
+                print("Cleaning old batch reports")
+                validator_collection = self.DB["batch-reports"]
+                validator_collection.delete_many(
+                    {"timestamp": {"$lt": time.time() - 21600}}
+                )
+                print("Old batch reports cleaned")
+            except Exception as e:
+                print(f"Error during cleaning batch reports: {e}")
+            time.sleep(3600)  # Clean every hour
 
 
 vrg = ValidatorReportGather()
