@@ -5,6 +5,14 @@ import bittensor as bt
 from dependencies import check_authentication
 import threading
 import time
+from pydantic import BaseModel
+
+
+class ReportBatch(BaseModel):
+    comparision: dict
+    challenge: dict
+    task: str
+    tier: str
 
 
 class ValidatorReportGather:
@@ -47,7 +55,9 @@ class ValidatorReportGather:
         threading.Thread(target=self.resync_metagraph_periodically, daemon=True).start()
 
         # Start background tasks in separate threads
-        threading.Thread(target=self.clean_old_batch_reports_periodically, daemon=True).start()
+        threading.Thread(
+            target=self.clean_old_batch_reports_periodically, daemon=True
+        ).start()
 
         # FastAPI app initialization
         self.app = FastAPI()
@@ -75,7 +85,7 @@ class ValidatorReportGather:
             return {"message": "Item uploaded successfully"}
 
         @self.app.post("/api/report-batch")
-        def report_batch(item: dict, request: Request):
+        def report_batch(item: ReportBatch, request: Request):
             ss58_address, uid = check_authentication(
                 request, self.metagraph, self.MIN_STAKE
             )
@@ -84,7 +94,22 @@ class ValidatorReportGather:
             result = validator_collection.insert_one(
                 {
                     "_id": f"{ss58_address}-{timestamp}",
-                    "batch_report": item,
+                    "batch_report": item.comparision,
+                    "task": item.task,
+                    "tier": item.tier,
+                    "timestamp": timestamp,
+                    "uid": uid,
+                }
+            )
+            print(result)
+
+            validator_collection = self.DB["batch-challenges"]
+            result = validator_collection.insert_one(
+                {
+                    "_id": f"{ss58_address}-{timestamp}",
+                    "challenge": item.challenge,
+                    "task": item.task,
+                    "tier": item.tier,
                     "timestamp": timestamp,
                     "uid": uid,
                 }
