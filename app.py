@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 
 class ReportBatch(BaseModel):
-    comparison: dict
+    comparision: dict
     challenge: dict
     task: str
     tier: str
@@ -94,7 +94,7 @@ class ValidatorReportGather:
             result = validator_collection.insert_one(
                 {
                     "_id": f"{ss58_address}-{timestamp}",
-                    "batch_report": item.comparison,
+                    "batch_report": item.comparision,
                     "task": item.task,
                     "tier": item.tier,
                     "timestamp": timestamp,
