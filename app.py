@@ -69,17 +69,28 @@ class ValidatorReportGather:
                 request, self.metagraph, self.MIN_STAKE
             )
             validator_collection = self.DB["metadata"]
+            current_time = time.time()
             validator_collection.update_one(
                 {"_id": ss58_address},
                 {
                     "$set": {
-                        "metadata": item,
-                        "uid": uid,
                         "hotkey": ss58_address,
-                        "timestamp": time.time(),
+                        "uid":uid
+                    },
+                    "$push": {
+                        "reports": {
+                            "$each": [
+                                {
+                                    "metadata": item,     
+                                    "timestamp": current_time
+                                }
+                            ],
+                            "$sort": {"timestamp": -1},
+                            "$slice": 10                
+                        }
                     }
                 },
-                upsert=True,
+                upsert=True
             )
 
             return {"message": "Item uploaded successfully"}
