@@ -144,11 +144,11 @@ class ValidatorReportGather:
             )
             return {"batch_reports": batch_reports}
         
-        @self.app.get("/get_coldkey_report/{coldkey}")
-        def get_coldkey_report(coldkey: str):
+        @self.app.get("/api/get_coldkey_report/")
+        def get_coldkey_report():
             coldkey_uid_map = dict(zip(self.metagraph.uids.tolist(), self.metagraph.coldkeys))
-            uids = [uid for uid, ck in coldkey_uid_map.items() if ck == coldkey]
-            return {"uids": uids}
+            
+            return {"coldkey_uid_map": coldkey_uid_map}
 
 
     def resync_metagraph_periodically(self):
