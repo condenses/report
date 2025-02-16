@@ -45,7 +45,7 @@ class ValidatorReportGather:
         # Initialize Subtensor
         try:
             self.subtensor = bt.subtensor(network=self.SUBTENSOR_NETWORK)
-            self.metagraph = self.subtensor.metagraph(self.NETUID)
+            self.metagraph = self.subtensor.metagraph(netuid=self.NETUID)
             print(f"Connected to Subtensor network {self.SUBTENSOR_NETWORK}")
         except Exception as e:
             print(f"Failed to initialize Subtensor: {e}")
