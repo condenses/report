@@ -1,4 +1,4 @@
 fastapi
 uvicorn
-bittensor
+bittensor==9.0.0
 motor
